@@ -4,6 +4,7 @@ const assert = require('assert');
 const tokenizer = require('../../lib/tokenizer');
 const token = require('../../lib/token');
 const Murmur3Tokenizer = tokenizer.Murmur3Tokenizer;
+const Murmur3BigIntTokenizer = tokenizer.Murmur3BigIntTokenizer;
 const RandomTokenizer = tokenizer.RandomTokenizer;
 const ByteOrderedTokenizer = tokenizer.ByteOrderedTokenizer;
 const types = require('../../lib/types');
@@ -52,7 +53,8 @@ describe('Murmur3Tokenizer', function () {
         [[1, 254, 3, 4, 5, 6, 7, 248], 0x403fe01, 0xf8070605],
         [[1, 254, 3, 4, 5, 250, 7, 248], 0x403fe01, 0xf807fa05],
         [[100, 254, 3, 4, 5, 250, 7, 122], 0x403fe64, 0x7a07fa05],
-        [[100, 254, 3, 4, 154, 250, 7, 122], 0x403fe64, 0x7a07fa9a]
+        [[100, 254, 3, 4, 154, 250, 7, 122], 0x403fe64, 0x7a07fa9a],
+        [[254, 254, 254, 254, 254, 254, 254, 254], 0xfefefefe, 0xfefefefe]
       ].forEach(function (item) {
         const result = t.getBlock(item[0], 0, 0);
         assert.ok(result.equals(MutableLong.fromBits(item[1], item[2])));
@@ -71,7 +73,8 @@ describe('Murmur3Tokenizer', function () {
         [[254, 254, 254, 254], '4566408979886474012'],
         [[0, 0, 0, 0], '-3485513579396041028'],
         [[0, 1, 127, 127], '6573459401642635627'],
-        [[226, 231, 226, 231, 226, 231, 1], '2222373981930033306']
+        [[226, 231, 226, 231, 226, 231, 1], '2222373981930033306'],
+        [[0x90, 0x77, 0, 0xb1, 0x7f, 0x7f, 0x12, 0x80, 0x12, 0, 0x12, 0xff, 0x12, 0x01, 0xba], '-6868325204739845144']
       ].forEach(function (item) {
         const v = t.hash(item[0]);
         helper.assertInstanceOf(v, token.Murmur3Token);
@@ -79,6 +82,94 @@ describe('Murmur3Tokenizer', function () {
       });
     });
   });
+});
+
+describe('Murmur3BigIntTokenizer', () => {
+  // Note that the string representation of BigInt values are used to check the values returned
+  // as 'assert' library might use JSON.stringify() to show the error message
+  // and it's not supported for some runtimes
+
+  describe('#rotl64()', () => {
+
+    it('should return expected results', () => {
+      const t = new Murmur3BigIntTokenizer();
+      [
+        ['12002002', 4, '192032032'],
+        ['120020021112229', 27, '4806971846970835817'],
+        ['44444441112229', 31, '256695637490275382'],
+        ['44744441112828', 31, '-1134251256001325992']
+      ].forEach(function (item) {
+        assert.strictEqual(t.rotl64(BigInt(item[0]), BigInt(item[1])).toString(), item[2]);
+      });
+    });
+
+  });
+
+  describe('#getBlock()', () => {
+
+    it('should return expected results', function () {
+      const t = new Murmur3BigIntTokenizer();
+      [
+        [[1, 2, 3, 4, 5, 6, 7, 8], '578437695752307201'],
+        [[1, 254, 3, 4, 5, 6, 7, 248], '-574483808854475263'],
+        [[1, 254, 3, 4, 5, 250, 7, 248], '-574215528017297919'],
+        [[100, 254, 3, 4, 5, 250, 7, 122], '8793271696913333860'],
+        [[100, 254, 3, 4, 154, 250, 7, 122], '8793272336863460964'],
+        [[254, 254, 254, 254, 254, 254, 254, 254], '-72340172838076674']
+      ].forEach(item => {
+        const result = t.getBlock(item[0], 0, 0);
+        assert.strictEqual(typeof result, 'bigint');
+        assert.strictEqual(result.toString(), item[1]);
+      });
+    });
+
+  });
+
+  describe('#fmix()', () => {
+
+    it('should return expected results', () => {
+      const t = new Murmur3BigIntTokenizer();
+      [
+        [44744441112828, '-7224089102552050611'],
+        [9090, '-7504869017411790576'],
+        [90913738921, '2458123773104054050'],
+        [1, '-5451962507482445012'],
+        [-1, '7256831767414464289']
+      ].forEach(item => {
+        const input = BigInt(item[0]);
+        const result = t.fmix(input);
+
+        assert.strictEqual(typeof result, 'bigint');
+        assert.strictEqual(result.toString(), item[1]);
+      });
+    });
+
+  });
+
+  describe('#hash()', () => {
+
+    it('should hash the according results', () => {
+      const t = new Murmur3BigIntTokenizer();
+      [
+        [[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], '-5563837382979743776'],
+        [[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], '-1513403162740402161'],
+        [[255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255], '-2824192546314762522'],
+        [[0, 1, 2, 3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255], '6463632673159404390'],
+        [[254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254], '-1672437813826982685'],
+        [[254, 254, 254, 254], '4566408979886474012'],
+        [[0, 0, 0, 0], '-3485513579396041028'],
+        [[0, 1, 127, 127], '6573459401642635627'],
+        [[226, 231, 226, 231, 226, 231, 1], '2222373981930033306'],
+        [[0x90, 0x77, 0, 0xb1, 0x7f, 0x7f, 0x12, 0x80, 0x12, 0, 0x12, 0xff, 0x12, 0x01, 0xba], '-6868325204739845144']
+      ].forEach(function (item) {
+        const v = t.hash(item[0]);
+        helper.assertInstanceOf(v, token.Murmur3Token);
+        assert.strictEqual(v.getValue().toString(), item[1]);
+      });
+    });
+
+  });
+
 });
 
 describe('RandomTokenizer', function () {
